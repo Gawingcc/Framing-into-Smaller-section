@@ -81,7 +81,8 @@ for beam in all_beams:
     
     if is_problematic:
         problematic_beams.append(beam)
-        mark = beam.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_MARK).AsString() or ""
+        mark_param = beam.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
+        mark = mark_param.AsString() if mark_param and mark_param.HasValue else ""
         type_name = doc.GetElement(beam.GetTypeId()).get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM).AsString()
         report_data.append("{},{},{},{:.3f},{}".format(beam.Id.IntegerValue, mark, type_name, depth, supporting_info))
 
@@ -90,7 +91,7 @@ TransactionManager.Instance.EnsureInTransaction(doc)
 
 for beam in problematic_beams:
     comment_param = beam.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
-    if comment_param:
+    if comment_param and comment_param.IsReadOnly == False:
         comment_param.Set(MARK_VALUE)
 
 cat_list = Generic.List[ElementId]()
@@ -110,12 +111,19 @@ TransactionManager.Instance.TransactionTaskDone()
 report_status = ""
 try:
     desktop_path = os.path.join(os.environ['USERPROFILE'], 'Desktop')
+    
+    # Create Desktop directory if it doesn't exist
+    if not os.path.exists(desktop_path):
+        os.makedirs(desktop_path)
+    
     report_path = os.path.join(desktop_path, "Beam_Support_Review.csv")
+    
     with open(report_path, 'w') as f:
         f.write("Beam ID,Mark,Type Name,Beam Depth (ft),Supporting Depth (ft)\n")
         f.write("\n".join(report_data))
-    report_status = "Report saved to Desktop."
+    
+    report_status = "Report saved to: " + report_path
 except Exception as e:
-    report_status = "Excel Error: " + str(e)
+    report_status = "Error: " + str(e)
 
 OUT = "Found {} issues. Filter '{}' ready. {}".format(len(problematic_beams), FILTER_NAME, report_status)
