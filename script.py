@@ -1,50 +1,53 @@
-"""Dynamo Python node helper for reading Revit element Mark values efficiently.
-
-Fixes warning:
-AttributeError: type object 'BuiltInParameter' has no attribute 'ALL_MODEL_INSTANCE_MARK'
-
-Use BuiltInParameter.ALL_MODEL_MARK instead.
-"""
-
 import clr
 
 clr.AddReference("RevitAPI")
 from Autodesk.Revit.DB import BuiltInParameter
 
+clr.AddReference("System")
+from System.Collections import IList
 
-# Dynamo provides UnwrapElement in the Python node runtime.
-def _as_list(value):
+
+def _is_sequence(value):
+    """True for Python lists and .NET IList, excluding strings."""
+    if value is None:
+        return False
+    if isinstance(value, (str, bytes)):
+        return False
+    return isinstance(value, list) or isinstance(value, IList)
+
+
+def _as_iterable(value):
     if value is None:
         return []
-    if isinstance(value, list):
+    if _is_sequence(value):
         return value
     return [value]
 
 
 def _read_mark(element):
-    """Return Mark for one element, or None if missing/unreadable."""
     if element is None:
         return None
 
-    # Correct built-in parameter for Mark.
-    param = element.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
-    if param is not None and param.HasValue:
-        value = param.AsString()
-        if value:
-            return value
+    # Correct Revit API enum name for Mark.
+    mark_param = element.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
+    if mark_param and mark_param.HasValue:
+        mark_value = mark_param.AsString()
+        if mark_value:
+            return mark_value
 
-    # Fallback when the built-in is unavailable for a given element/category.
-    by_name = element.LookupParameter("Mark")
-    if by_name is not None and by_name.HasValue:
-        return by_name.AsString()
+    # Fallback only when needed.
+    mark_by_name = element.LookupParameter("Mark")
+    if mark_by_name and mark_by_name.HasValue:
+        return mark_by_name.AsString()
 
     return None
 
 
-is_list_input = isinstance(IN[0], list)
-wrapped_input = _as_list(IN[0])
-elements = [UnwrapElement(item) for item in wrapped_input]
+input_data = IN[0] if len(IN) > 0 else None
+is_input_sequence = _is_sequence(input_data)
 
-# Efficient single-pass read.
-marks = [_read_mark(element) for element in elements]
-OUT = marks if is_list_input else (marks[0] if marks else None)
+marks = []
+for item in _as_iterable(input_data):
+    marks.append(_read_mark(UnwrapElement(item)))
+
+OUT = marks if is_input_sequence else (marks[0] if marks else None)
